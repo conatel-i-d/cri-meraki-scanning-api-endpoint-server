@@ -70,6 +70,7 @@ var (
 
 func createProcessBody(svc *s3.S3, loc *time.Location, bucket string) func(id int, j job) {
   return func (id int, j job) {
+    start := time.Now()
     data := j.devicesSeen.Data
     now := time.Now().In(loc).Format(time.RFC3339)
     key := now + "-" + data.ApMac + ".json"
@@ -87,6 +88,7 @@ func createProcessBody(svc *s3.S3, loc *time.Location, bucket string) func(id in
     if err != nil {
       panic(err)
     }
+    fmt.Println("Saved", key, "to S3 in", time.Since(start))
   }
 }
 
