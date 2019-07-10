@@ -1,4 +1,4 @@
-# meraki_endpoint
+# Meraki Scanning API Endpoint
 
 Endpoint to use against Meraki's Scanning API.
 
