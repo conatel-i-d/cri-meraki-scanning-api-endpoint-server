@@ -1,0 +1,29 @@
+[Unit]
+Description=Meraki Endpoint service
+ConditionPathExists=/usr/bin/meraki_endpoint
+After=network.target
+
+[Service]
+Type=simple
+User=meraki_endpoint
+Group=meraki_endpoint
+LimitNOFILE=1024
+
+Restart=on-failure
+RestartSec=10
+startLimitIntervalSec=60
+
+WorkingDirectory=/srv/meraki_endpoint
+ExecStart=/usr/bin/meraki_endpoint
+
+# Make sure log directory exists and owned by syslog
+PermissionsStartOnly=true
+ExecStartPre=/bin/mkdir -p /var/log/meraki_endpoint
+ExecStartPre=/bin/chown syslog:adm /var/log/meraki_endpoint
+ExecStartPre=/bin/chmod 755 /var/log/meraki_endpoint
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=meraki_endpoint
+ 
+[Install]
+WantedBy=multi-user.target
