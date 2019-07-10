@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MERAKI_ENDPOINT_VERSION=${MERAKI_ENDPOINT_VERSION:-"0.0.2"}
+MERAKI_ENDPOINT_VERSION=${MERAKI_ENDPOINT_VERSION:-"0.0.3"}
 
 echo "Creating user meraki_endpoint"
 sudo useradd meraki_endpoint -s /sbin/nologin -M
