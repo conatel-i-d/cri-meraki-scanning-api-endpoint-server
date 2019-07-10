@@ -1,4 +1,4 @@
-.PHONY: install logs
+.PHONY: install journal
 
 install:
 	echo "Stoping the meraki_endpoint service" ;\
@@ -15,5 +15,5 @@ install:
 	sudo systemctl enable meraki_endpoint.service ;\
 	sudo systemctl start meraki_endpoint.service
 
-logs:
+journal:
 	sudo journalctl -f -u meraki_endpoint
