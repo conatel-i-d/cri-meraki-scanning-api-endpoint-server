@@ -25,7 +25,7 @@ You need valid certificates. If you don't own one, try using [Let's Encrypt](htt
 
 ## Installation
 
-### Run binary
+### Run the binary
 
 Download the binary from the releases site:
 
