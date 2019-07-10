@@ -8,7 +8,7 @@ echo "Moving service configuration to /lib/systemd/system/"
 sudo mv ./meraki_endpoint.service /lib/systemd/system/.
 sudo chmod 755 /lib/systemd/system/meraki_endpoint.service
 echo "Downloading meraki_endpoint binaries"
-wget https://github.com/guzmonne/meraki_endpoint/releases/download/$MERAKI_ENDPOINT_VERSION/meraki_endpoint
+wget --quiet https://github.com/guzmonne/meraki_endpoint/releases/download/$MERAKI_ENDPOINT_VERSION/meraki_endpoint
 sudo mv ./meraki_endpoint /usr/bin/meraki_endpoint
 echo "Creating application folders"
 sudo mkdir -p /srv/meraki_endpoint
