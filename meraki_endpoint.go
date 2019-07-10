@@ -68,8 +68,12 @@ var (
   logger *log.Logger
 )
 
-func createProcessBody(svc *s3.S3, loc *time.Location, bucket string) func(id int, j job) {
+func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret string) func(id int, j job) {
   return func (id int, j job) {
+    if secret != j.devicesSeen.Secret {
+      fmt.Println("Invalid secret", j.devicesSeen.Secret)
+      return
+    }
     start := time.Now()
     data := j.devicesSeen.Data
     now := time.Now().In(loc).Format(time.RFC3339)
@@ -102,6 +106,8 @@ func main() {
     tls = flag.Bool("tls", false, "Should the server listen and serve tls")
     serverCrt = flag.String("server-tls", "server.crt", "Server TLS certificate")
     serverKey = flag.String("server-key", "server.key", "Server TLS key")
+    validator = flag.String("validator", "da6a17c407bb11dfeec7392a5042be0a4cc034b6", "Meraki Sacnning API Validator")
+    secret = flag.String("secret", "cjkww5rmn0001SE__2j7wztuy", "Meraki Sacnning API Secret")
   )
   flag.Parse()
   // Set the time location
@@ -129,7 +135,7 @@ func main() {
   // Create job channel
   jobs := make(chan job, *maxQueueSize)
   // Create the worker handler
-  processBody := createProcessBody(svc, loc, *bucket)
+  processBody := createProcessBody(svc, loc, *bucket, *secret)
   // Create workers
   for index := 1; index <= *maxWorkers; index++ {
     logger.Println("Starting worker #", index)
@@ -141,7 +147,7 @@ func main() {
   }
   // Router configuration
   router := http.NewServeMux()
-  router.Handle("/", handler(jobs))
+  router.Handle("/", handler(*validator, jobs))
   router.Handle("/healthz", healthz())
   // Server configuration
   server := &http.Server{
@@ -196,34 +202,33 @@ func healthz() http.Handler {
   })
 }
 
-func handler(jobs chan job) http.Handler {
+func handler(validator string, jobs chan job) http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodGet && r.Method != http.MethodPost {
       http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
       return
     }
     if r.Method == http.MethodGet {
-      validator(w, r)
+      sendValidator(w, r, validator)
       return
     }
     if r.Method == http.MethodPost {
-      data(w, r, jobs)
+      handleData(w, r, jobs)
       return
     }
   })
 }
 
-func validator(w http.ResponseWriter, r *http.Request) {
+func sendValidator(w http.ResponseWriter, r *http.Request, validator string) {
   w.Header().Set("Content-Type", "text/plain; charset=utf-8")
   w.Header().Set("X-Content-Type-Options", "nosniff")
   w.WriteHeader(http.StatusOK)
-  fmt.Fprintln(w, "da6a17c407bb11dfeec7392a5042be0a4cc034b6")
+  fmt.Fprintln(w, validator)
 }
 
-func data(w http.ResponseWriter, r *http.Request, jobs chan job) {
+func handleData(w http.ResponseWriter, r *http.Request, jobs chan job) {
   var devicesSeen DevicesSeen
-  decoder := json.NewDecoder(r.Body)
-  err := decoder.Decode(&devicesSeen)
+  err := json.NewDecoder(r.Body).Decode(&devicesSeen)
   if err != nil {
     http.Error(w, "Bad request - Can't Decode!", 400)
     panic(err)

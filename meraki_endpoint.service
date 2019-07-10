@@ -14,6 +14,10 @@ RestartSec=10
 startLimitIntervalSec=60
 
 WorkingDirectory=/srv/meraki_endpoint
+# Configure the necessary options to run the service on your setup
+# ExecStart=/usr/bin/meraki_endpoint --port="8080" --bucket="some.bucket" --secret="s3cr3t" --validator="d283..."
+# To use it in standalone mode serving http, remember to configure the ssl ans server options besides the other options
+# ExecStart=/usr/bin/meraki_endpoint --port="443" --server-crt="/path/to/crt" --server-key="path/to/key"
 ExecStart=/usr/bin/meraki_endpoint
 
 # Make sure log directory exists and owned by syslog
