@@ -99,13 +99,15 @@ func main() {
     port = flag.String("port", "8080", "The server port")
     bucket = flag.String("bucket", "cri.conatel.cloud", "The S3 Bucket where the data will be stored")
     location = flag.String("location", "UTC", "The time location")
+    tls = flag.Bool("tls", false, "Should the server listen and serve tls")
+    serverCrt = flag.String("server-tls", "server.crt", "Server TLS certificate")
+    serverKey = flag.String("server-key", "server.key", "Server TLS key")
   )
   flag.Parse()
   // Set the time location
   loc, err := time.LoadLocation(*location)
   if err != nil {
     panic(err)
-    return
   }
   // Logger configuration
   logger := log.New(os.Stdout, "http: ", log.LstdFlags)
@@ -115,6 +117,7 @@ func main() {
   logger.Println("GOMAXPROCS =", runtime.NumCPU())
   logger.Println("maxWorkers =", *maxWorkers)
   logger.Println("maxQueueSize =", *maxQueueSize)
+  logger.Println("port =", *port)
   // Create an AWS Session and an s3 service
   sess, err := session.NewSession(&aws.Config{
     Region: aws.String("us-east-1"),
@@ -169,8 +172,14 @@ func main() {
   // Run server
   logger.Println("Server is ready to handle requests at", "0.0.0.0:" + *port)
   atomic.StoreInt32(&healthy, 1)
-  if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-    logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
+  if *tls == false {
+    if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+      logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
+    }
+  } else {
+    if err := server.ListenAndServeTLS(*serverCrt, *serverKey); err != nil && err != http.ErrServerClosed {
+      logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
+    }
   }
   // Handle done
   <-done
@@ -216,9 +225,8 @@ func data(w http.ResponseWriter, r *http.Request, jobs chan job) {
   decoder := json.NewDecoder(r.Body)
   err := decoder.Decode(&devicesSeen)
   if err != nil {
-    panic(err)
     http.Error(w, "Bad request - Can't Decode!", 400)
-    return
+    panic(err)
   }
   // Create Job and push the work into the Job Channel
   go func() {
