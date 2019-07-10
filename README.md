@@ -96,5 +96,5 @@ Welcomed. Create a PR and send it. If it looks good, it will be added to the rep
 
 ## Author
 
-Guzmán Monné <godevops@outlook.com>
+Guzmán Monné <<godevops@outlook.com>>
 
