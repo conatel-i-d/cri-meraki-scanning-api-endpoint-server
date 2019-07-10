@@ -19,7 +19,7 @@ sudo apt-get install libcap2-bin -y
 sudo setcap 'cap_net_bind_service=+ep' /your/path/gobinary
 ```
 
-_[Source](Source: https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/)_
+_[Source](https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/)_
 
 You need valid certificates. If you don't own one, try using [Let's Encrypt](https://letsencrypt.org).
 
