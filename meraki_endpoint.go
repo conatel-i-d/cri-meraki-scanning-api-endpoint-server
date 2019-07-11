@@ -110,7 +110,6 @@ func main() {
     secret = flag.String("secret", "cjkww5rmn0001SE__2j7wztuy", "Meraki Sacnning API Secret")
   )
   flag.Parse()
-  // Set the time location
   loc, err := time.LoadLocation(*location)
   if err != nil {
     panic(err)
@@ -145,6 +144,13 @@ func main() {
       }
     }(index)
   }
+  // Pprof configuration
+	pprofMux := http.DefaultServeMux
+	http.DefaultServeMux = http.NewServeMux()
+	// Pprof server.
+	go func() {
+		log.Println(http.ListenAndServe("localhost:8081", pprofMux))
+	}()
   // Router configuration
   router := http.NewServeMux()
   router.Handle("/", handler(*validator, jobs))
