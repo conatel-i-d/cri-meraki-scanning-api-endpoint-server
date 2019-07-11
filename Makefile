@@ -9,7 +9,7 @@ install:
 	sudo useradd meraki_endpoint -s /sbin/nologin -M ;\
 	sudo cp ./meraki_endpoint.service /lib/systemd/system/. ;\
 	sudo chmod 755 /lib/systemd/system/meraki_endpoint.service ;\
-	sudo mv ./meraki_endpoint /usr/bin/meraki_endpoint ;\
+	sudo cp ./meraki_endpoint /usr/bin/meraki_endpoint ;\
 	sudo mkdir -p /srv/meraki_endpoint ;\
 	echo "Restarting service" ;\
 	sudo systemctl enable meraki_endpoint.service ;\
