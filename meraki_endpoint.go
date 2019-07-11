@@ -237,8 +237,9 @@ func handleData(w http.ResponseWriter, r *http.Request, jobs chan job) {
   //err := json.NewDecoder(r.Body).Decode(&devicesSeen)
   devicesSeen, err := ioutil.ReadAll(r.Body)
   if err != nil {
-   http.Error(w, "Bad request - Can't Decode!", 400)
-   panic(err)
+    w.WriteHeader(http.StatusAccepted)
+    fmt.Println(err)
+    return
   }
   // Create Job and push the work into the Job Channel
   go func() {
