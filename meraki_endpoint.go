@@ -14,6 +14,7 @@ import (
   "os"
   "os/signal"
   "bytes"
+  "io/ioutil"
   "github.com/json-iterator/go"
   "github.com/aws/aws-sdk-go/aws"
   "github.com/aws/aws-sdk-go/aws/session"
@@ -60,7 +61,7 @@ type DevicesSeen struct {
 }
 
 type job struct {
-  devicesSeen DevicesSeen
+  devicesSeen []byte
 }
 
 var (
@@ -70,12 +71,17 @@ var (
 
 func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret string) func(id int, j job) {
   return func (id int, j job) {
-    if secret != j.devicesSeen.Secret {
-      fmt.Println("Invalid secret", j.devicesSeen.Secret)
+    var devicesSeen DevicesSeen
+    err := json.Unmarshal(j.devicesSeen, &devicesSeen)
+    if err != nil {
+      panic(err)
+    }
+    if secret != devicesSeen.Secret {
+      fmt.Println("Invalid secret", devicesSeen.Secret)
       return
     }
     start := time.Now()
-    data := j.devicesSeen.Data
+    data := devicesSeen.Data
     now := time.Now().In(loc).Format(time.RFC3339)
     key := now + "-" + data.ApMac + ".json"
     data.Tenant = "tata"
@@ -233,11 +239,13 @@ func sendValidator(w http.ResponseWriter, r *http.Request, validator string) {
 }
 
 func handleData(w http.ResponseWriter, r *http.Request, jobs chan job) {
-  var devicesSeen DevicesSeen
-  err := json.NewDecoder(r.Body).Decode(&devicesSeen)
+  //var devicesSeen DevicesSeen
+  //err := json.NewDecoder(r.Body).Decode(&devicesSeen)
+  devicesSeen, err := ioutil.ReadAll(r.Body)
   if err != nil {
-    http.Error(w, "Bad request - Can't Decode!", 400)
-    panic(err)
+    w.WriteHeader(http.StatusAccepted)
+    fmt.Println(err)
+    return
   }
   // Create Job and push the work into the Job Channel
   go func() {
