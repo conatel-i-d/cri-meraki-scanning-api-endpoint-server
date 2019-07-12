@@ -1,4 +1,4 @@
-.PHONY: install journal
+.PHONY: install journal release
 
 install:
 	echo "Stoping the meraki_endpoint service" ;\
@@ -17,3 +17,6 @@ install:
 
 journal:
 	sudo journalctl -f -u meraki_endpoint
+
+release:
+	hub release create -a ./meraki_endpoint -m "Added the ability to turn on a pprof server" $$VERSION
