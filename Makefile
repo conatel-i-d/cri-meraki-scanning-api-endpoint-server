@@ -19,4 +19,4 @@ journal:
 	sudo journalctl -f -u meraki_endpoint
 
 release:
-	hub release create -a ./meraki_endpoint -m "Added the ability to turn on a pprof server" $$VERSION
+	hub release create -a ./meraki_endpoint -m "meraki_endpoint $$VERSION" $$VERSION

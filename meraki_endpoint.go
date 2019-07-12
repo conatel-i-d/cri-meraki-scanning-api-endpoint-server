@@ -68,15 +68,15 @@ var (
   logger *log.Logger
   loc *time.Location
   jobs chan job
-	maxQueueSize = flag.Int("max_queue_size", 100, "The size of the job queue")
-	maxWorkers = flag.Int("max_workers", 5, "The number of workers to start")
-	port = flag.String("port", "8080", "The server port")
-	bucket = flag.String("bucket", "cri.conatel.cloud", "The S3 Bucket where the data will be stored")
-	location = flag.String("location", "UTC", "The time location")
-	tls = flag.Bool("tls", false, "Should the server listen and serve tls")
-	serverCrt = flag.String("server-tls", "server.crt", "Server TLS certificate")
-	serverKey = flag.String("server-key", "server.key", "Server TLS key")
-	validator = flag.String("validator", "da6a17c407bb11dfeec7392a5042be0a4cc034b6", "Meraki Sacnning API Validator")
+  maxQueueSize = flag.Int("max_queue_size", 100, "The size of the job queue")
+  maxWorkers = flag.Int("max_workers", 5, "The number of workers to start")
+  port = flag.String("port", "8080", "The server port")
+  bucket = flag.String("bucket", "cri.conatel.cloud", "The S3 Bucket where the data will be stored")
+  location = flag.String("location", "UTC", "The time location")
+  tls = flag.Bool("tls", false, "Should the server listen and serve tls")
+  serverCrt = flag.String("server-tls", "server.crt", "Server TLS certificate")
+  serverKey = flag.String("server-key", "server.key", "Server TLS key")
+  validator = flag.String("validator", "da6a17c407bb11dfeec7392a5042be0a4cc034b6", "Meraki Sacnning API Validator")
   secret = flag.String("secret", "cjkww5rmn0001SE__2j7wztuy", "Meraki Sacnning API Secret")
   region = flag.String("region", "us-east-1", "AWS Region")
   pprofOn = flag.Bool("pprof-on", false, "Should a pprof server be run along the app")
@@ -86,15 +86,15 @@ func main() {
   /*
   Parse application flags
   */
-	flag.Parse()
+  flag.Parse()
   /*
   Set the "Location" for the `time` module. UTC by default.
   */
-	var err error
-	loc, err = time.LoadLocation(*location)
-	if err != nil {
-		panic(err)
-	}
+  var err error
+  loc, err = time.LoadLocation(*location)
+  if err != nil {
+    panic(err)
+  }
   /*
   Create the logger
   */
