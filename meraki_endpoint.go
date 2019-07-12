@@ -20,68 +20,212 @@ import (
   "github.com/aws/aws-sdk-go/aws/session"
   "github.com/aws/aws-sdk-go/service/s3"
 )
-
+// Configure `jsoniter` to work as the `encoding/json` module API
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
-
-// Location : Meraki device observation location
-type Location struct {
-  Lat float64 `json:"lat,omitempty"`
-  Lng float64 `json:"lng,omitempty"`
-  Unc float64 `json:"unc,omitempty"`
-  X []float64 `json:"x,omitempty"`
-  Y []float64 `json:"y,omitempty"`
+// ScanData : Scanning API top level data
+type ScanData struct {
+	Type    string     `json:"type"`
+	Secret  string     `json:"secret"`
+	Version string     `json:"version"`
+	Data    ClientData `json:"data"`
 }
-// Observation : Meraki device observation
+// ClientData : Client data
+type ClientData struct {
+	ApMac        string        `json:"apMac"`
+	ApFloors     []string      `json:"apFloors"`
+	ApTags       []string      `json:"apTags"`
+	Observations []Observation `json:"observations"`
+	Tenant       string        `json:"tenant"`
+}
+// Observation ; Observation data
 type Observation struct {
-  IPv4 string `json:"ipv4,omitempty"`
-  Location Location `json:"location,omitempty"`
-  SeenTime string `json:"seenTime,omitempty"`
-  SSID string `json:"ssid,omitempty"`
-  OS string `json:"os,omitempty"`
-  ClientMac string `json:"clientMac,omitempty"`
-  SeenEpoch int64 `json:"seenEpoch,omitempty"`
-  RSSI int `json:"rssi,omitempty"`
-  IPv6 string `json:"ipv6,omitempty"`
-  Manufacturer string `json:"manufacturer,omitempty"`
+	Ssid         string       `json:"ssid"`
+	Ipv4         string       `json:"ipv4"`
+	Ipv6         string       `json:"ipv6"`
+	SeenEpoch    float64      `json:"seenEpoch"`
+	SeenTime     string       `json:"seenTime"`
+	Rssi         int          `json:"rssi"`
+	Manufacturer string       `json:"manufacturer"`
+	Os           string       `json:"os"`
+	Location     LocationData `json:"location"`
+	ClientMac    string       `json:"clientMac"`
 }
-// DevicesSeenData : Meraki devices seen data
-type DevicesSeenData struct {
-  ApMac string `json:"apMac,omitempty"`
-  ApTags []string `json:"apTags,omitempty"`
-  ApFloors []string `json:"apFloors,omitempty"`
-  Observations []Observation `json:"observations,omitempty"`
-  Tenant string `json:"tenant,omitempty"`   
-}
-// DevicesSeen : Meraki devices seen
-type DevicesSeen struct {
-  Version string `json:"version,omitempty"`
-  Secret string `json:"secret,omitempty"`
-  Type string `json:"type,omitempty"`
-  Data DevicesSeenData  `json:"data,omitempty"`
+// LocationData : Location Data
+type LocationData struct {
+	Lat float64   `json:"lat"`
+	X   []float64 `json:"x"`
+	Lng float64   `json:"lng"`
+	Unc float64   `json:"unc"`
+	Y   []float64 `json:"y"`
 }
 
 type job struct {
-  devicesSeen []byte
+  scanData []byte
 }
 
 var (
   healthy int32
   logger *log.Logger
+  loc *time.Location
+  jobs chan job
+	maxQueueSize = flag.Int("max_queue_size", 100, "The size of the job queue")
+	maxWorkers = flag.Int("max_workers", 5, "The number of workers to start")
+	port = flag.String("port", "8080", "The server port")
+	bucket = flag.String("bucket", "cri.conatel.cloud", "The S3 Bucket where the data will be stored")
+	location = flag.String("location", "UTC", "The time location")
+	tls = flag.Bool("tls", false, "Should the server listen and serve tls")
+	serverCrt = flag.String("server-tls", "server.crt", "Server TLS certificate")
+	serverKey = flag.String("server-key", "server.key", "Server TLS key")
+	validator = flag.String("validator", "da6a17c407bb11dfeec7392a5042be0a4cc034b6", "Meraki Sacnning API Validator")
+  secret = flag.String("secret", "cjkww5rmn0001SE__2j7wztuy", "Meraki Sacnning API Secret")
+  region = flag.String("region", "us-east-1", "AWS Region")
+  pprofOn = flag.Bool("pprof-on", false, "Should a pprof server be run along the app")
 )
 
+func main() {
+  /*
+  Parse application flags
+  */
+	flag.Parse()
+  /*
+  Set the "Location" for the `time` module. UTC by default.
+  */
+	var err error
+	loc, err = time.LoadLocation(*location)
+	if err != nil {
+		panic(err)
+	}
+  /*
+  Create the logger
+  */
+  logger = log.New(os.Stdout, "http: ", log.LstdFlags)
+  logger.Println("Server is starting...")
+  /*
+  Configure concurrent jobs by modifying the GOMAXPROCS env variable
+  to match the ammount of CPUs on the server.
+  */
+  runtime.GOMAXPROCS(runtime.NumCPU())
+  logger.Println("GOMAXPROCS =", os.Getenv("GOMAXPROCS"))
+  logger.Println("maxWorkers =", *maxWorkers)
+  logger.Println("maxQueueSize =", *maxQueueSize)
+  logger.Println("port =", *port)
+  /*
+  Configure AWS Go SDK
+  */
+  sess, err := session.NewSession(&aws.Config{
+    Region: aws.String(*region),
+  })
+  if err != nil {
+    logger.Fatalf("Could not configure the AWS Go SDK: %v\n", err)
+  }
+  svc := s3.New(sess)
+  /*
+  Create the job queue. It creates a new channel to hold the jobs
+  and starts all the workers.
+  */
+  jobs = make(chan job, *maxQueueSize)
+  // Create the worker handler
+  processBody := createProcessBody(svc, loc, *bucket, *secret)
+  // Create workers
+  for index := 1; index <= *maxWorkers; index++ {
+    logger.Println("Starting worker #", index)
+    go func(index int) {
+      for job := range jobs {
+        processBody(index, job)
+      }
+    }(index)
+  }
+  /*
+  Run pprof server if the `pprofOn` flag is on
+  */
+  if *pprofOn == true {
+    pprofMux := http.DefaultServeMux
+    http.DefaultServeMux = http.NewServeMux()
+    go func() {
+      log.Println(http.ListenAndServe("localhost:6060", pprofMux))
+    }()
+  }
+  /*
+  Create and configure the API router
+  */
+  router := http.NewServeMux()
+  router.Handle("/", handler())
+  router.Handle("/healthz", healthz())
+  /*
+  Configure the HTTP server
+  */
+  server := &http.Server{
+    Addr: "0.0.0.0:" + *port,
+    Handler: logging()(router),
+    ErrorLog: logger,
+    ReadTimeout: 5 * time.Second,
+    WriteTimeout: 10 * time.Second,
+    IdleTimeout: 15 * time.Second,
+  }
+  /*
+  Create the channels that respond to system signals
+  */
+  done := make(chan bool)
+  quit := make(chan os.Signal, 1)
+  signal.Notify(quit, os.Interrupt)
+  /*
+  Launch the server shutdown procedure on its own goroutine
+  */
+  go func() {
+    <-quit
+    logger.Println("Server is shutting down...")
+    atomic.StoreInt32(&healthy, 0)
+    ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+    defer cancel()
+    server.SetKeepAlivesEnabled(false)
+    if err := server.Shutdown(ctx); err != nil {
+      logger.Fatalf("Could not gracefully shutdown the server: %v\n", err)
+    }
+    close(done)
+  }()
+  /*
+  Run the HTTP or HTTPS server depending on the provided configuration
+  */
+  atomic.StoreInt32(&healthy, 1)
+  if *tls == false {
+    logger.Println("Server is ready to handle HTTP requests at", "0.0.0.0:" + *port)
+    if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+      logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
+    }
+  } else {
+    logger.Println("Server is ready to handle HTTPS requests at", "0.0.0.0:" + *port)
+    if err := server.ListenAndServeTLS(*serverCrt, *serverKey); err != nil && err != http.ErrServerClosed {
+      logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
+    }
+  }
+  /*
+  Shutdown server message
+  */
+  <-done
+  logger.Println("Server stopped")
+}
+/*
+Creates the `processBody` function to handle the JSON data provided by
+CISCO Meraki Scanning API. It provides access to the S3 service, time
+location configuration, S3 Bucjet name, and Meraki secret through a 
+closure.
+
+The `processBody` function will be run by the job workers whenever a 
+new `job` is inserted to the channel.
+*/
 func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret string) func(id int, j job) {
   return func (id int, j job) {
-    var devicesSeen DevicesSeen
-    err := json.Unmarshal(j.devicesSeen, &devicesSeen)
+    var scanData ScanData
+    err := json.Unmarshal(j.scanData, &scanData)
     if err != nil {
       panic(err)
     }
-    if secret != devicesSeen.Secret {
-      fmt.Println("Invalid secret", devicesSeen.Secret)
+    if secret != scanData.Secret {
+      fmt.Println("Invalid secret", scanData.Secret)
       return
     }
     start := time.Now()
-    data := devicesSeen.Data
+    data := scanData.Data
     now := time.Now().In(loc).Format(time.RFC3339)
     key := now + "-" + data.ApMac + ".json"
     data.Tenant = "tata"
@@ -101,109 +245,12 @@ func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret str
     fmt.Println("Saved", key, "to S3 in", time.Since(start))
   }
 }
+/*
+Health endpoint to use against ALB load balancers, or to check for the 
+stability of the service.
 
-func main() {
-  var (
-    maxQueueSize = flag.Int("max_queue_size", 100, "The size of the job queue")
-    maxWorkers = flag.Int("max_workers", 5, "The number of workers to start")
-    port = flag.String("port", "8080", "The server port")
-    bucket = flag.String("bucket", "cri.conatel.cloud", "The S3 Bucket where the data will be stored")
-    location = flag.String("location", "UTC", "The time location")
-    tls = flag.Bool("tls", false, "Should the server listen and serve tls")
-    serverCrt = flag.String("server-tls", "server.crt", "Server TLS certificate")
-    serverKey = flag.String("server-key", "server.key", "Server TLS key")
-    validator = flag.String("validator", "da6a17c407bb11dfeec7392a5042be0a4cc034b6", "Meraki Sacnning API Validator")
-    secret = flag.String("secret", "cjkww5rmn0001SE__2j7wztuy", "Meraki Sacnning API Secret")
-  )
-  flag.Parse()
-  loc, err := time.LoadLocation(*location)
-  if err != nil {
-    panic(err)
-  }
-  // Logger configuration
-  logger := log.New(os.Stdout, "http: ", log.LstdFlags)
-  logger.Println("Server is starting...")
-  // Configure concurrent jobs
-  runtime.GOMAXPROCS(runtime.NumCPU())
-  logger.Println("GOMAXPROCS =", runtime.NumCPU())
-  logger.Println("maxWorkers =", *maxWorkers)
-  logger.Println("maxQueueSize =", *maxQueueSize)
-  logger.Println("port =", *port)
-  // Create an AWS Session and an s3 service
-  sess, err := session.NewSession(&aws.Config{
-    Region: aws.String("us-east-1"),
-  })
-  if err != nil {
-    logger.Fatalf("Could not configure the AWS Go SDK: %v\n", err)
-  }
-  svc := s3.New(sess)
-  // Create job channel
-  jobs := make(chan job, *maxQueueSize)
-  // Create the worker handler
-  processBody := createProcessBody(svc, loc, *bucket, *secret)
-  // Create workers
-  for index := 1; index <= *maxWorkers; index++ {
-    logger.Println("Starting worker #", index)
-    go func(index int) {
-      for job := range jobs {
-        processBody(index, job)
-      }
-    }(index)
-  }
-  // Pprof configuration
-	pprofMux := http.DefaultServeMux
-	http.DefaultServeMux = http.NewServeMux()
-	// Pprof server.
-	go func() {
-		log.Println(http.ListenAndServe("localhost:8081", pprofMux))
-	}()
-  // Router configuration
-  router := http.NewServeMux()
-  router.Handle("/", handler(*validator, jobs))
-  router.Handle("/healthz", healthz())
-  // Server configuration
-  server := &http.Server{
-    Addr: "0.0.0.0:" + *port,
-    Handler: logging(logger)(router),
-    ErrorLog: logger,
-    ReadTimeout: 5 * time.Second,
-    WriteTimeout: 10 * time.Second,
-    IdleTimeout: 15 * time.Second,
-  }
-  // Configure done and quit handlers
-  done := make(chan bool)
-  quit := make(chan os.Signal, 1)
-  signal.Notify(quit, os.Interrupt)
-  // Launch quit handler goroutine
-  go func() {
-    <-quit
-    logger.Println("Server is shutting down...")
-    atomic.StoreInt32(&healthy, 0)
-    ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
-    defer cancel()
-    server.SetKeepAlivesEnabled(false)
-    if err := server.Shutdown(ctx); err != nil {
-      logger.Fatalf("Could not gracefully shutdown the server: %v\n", err)
-    }
-    close(done)
-  }()
-  // Run server
-  logger.Println("Server is ready to handle requests at", "0.0.0.0:" + *port)
-  atomic.StoreInt32(&healthy, 1)
-  if *tls == false {
-    if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-      logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
-    }
-  } else {
-    if err := server.ListenAndServeTLS(*serverCrt, *serverKey); err != nil && err != http.ErrServerClosed {
-      logger.Fatalf("Could not listen on %s: %v\n", "0.0.0.0:" + *port, err)
-    }
-  }
-  // Handle done
-  <-done
-  logger.Println("Server stopped")
-}
-
+It returns a 204 Code, not a 200 Code.
+*/
 func healthz() http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     if atomic.LoadInt32(&healthy) == 1 {
@@ -213,49 +260,53 @@ func healthz() http.Handler {
     w.WriteHeader(http.StatusServiceUnavailable)
   })
 }
-
-func handler(validator string, jobs chan job) http.Handler {
+/*
+Handles request to the `/` endpoint. Meraki expects a GET request to `/`
+to return the validator for the organization, and a POST to `/` to handle
+the JSON information.
+*/
+func handler() http.Handler {
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet && r.Method != http.MethodPost {
-      http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-      return
-    }
     if r.Method == http.MethodGet {
-      sendValidator(w, r, validator)
+      getValidator(w, r)
       return
     }
     if r.Method == http.MethodPost {
-      handleData(w, r, jobs)
+      postData(w, r, jobs)
       return
     }
+    http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
   })
 }
-
-func sendValidator(w http.ResponseWriter, r *http.Request, validator string) {
+/*
+Returns the organization validator number
+*/
+func getValidator(w http.ResponseWriter, r *http.Request) {
   w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-  w.Header().Set("X-Content-Type-Options", "nosniff")
   w.WriteHeader(http.StatusOK)
-  fmt.Fprintln(w, validator)
+  fmt.Fprintln(w, *validator)
 }
-
-func handleData(w http.ResponseWriter, r *http.Request, jobs chan job) {
-  //var devicesSeen DevicesSeen
-  //err := json.NewDecoder(r.Body).Decode(&devicesSeen)
-  devicesSeen, err := ioutil.ReadAll(r.Body)
+/*
+Reads the body to a []byte and creates a new `job` with it. Then it returns
+with a 202 success code.
+*/
+func postData(w http.ResponseWriter, r *http.Request, jobs chan job) {
+  scanData, err := ioutil.ReadAll(r.Body)
   if err != nil {
     w.WriteHeader(http.StatusAccepted)
     fmt.Println(err)
     return
   }
-  // Create Job and push the work into the Job Channel
   go func() {
-    jobs <- job{devicesSeen}
+    jobs <- job{scanData}
   }()
-  // Render success
   w.WriteHeader(http.StatusAccepted)
 }
-
-func logging(logger *log.Logger) func(http.Handler) http.Handler {
+/*
+Middleware loggin function. Waits for the request handler to finish processing the
+request before printing a log message.
+*/
+func logging() func(http.Handler) http.Handler {
   return func(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
       start := time.Now()
