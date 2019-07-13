@@ -1,5 +1,8 @@
 .PHONY: install journal release
 
+build:
+	GOOS=linux GOARCH=amd64 go build
+
 install:
 	echo "Stoping the meraki_endpoint service" ;\
 	sudo systemctl stop meraki_endpoint.service ;\
