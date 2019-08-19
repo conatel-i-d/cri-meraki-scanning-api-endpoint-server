@@ -83,7 +83,7 @@ var (
 	serverKey    = flag.String("server-key", "server.key", "Server TLS key")
 	validator    = flag.String("validator", "da6a17c407bb11dfeec7392a5042be0a4cc034b6", "Meraki Sacnning API Validator")
 	secret       = flag.String("secret", "cjkww5rmn0001SE__2j7wztuy", "Meraki Sacnning API Secret")
-	region       = flag.String("region", "us-east-1", "AWS Region")
+	region       = flag.String("region", "us-west-1", "AWS Region")
 	pprofOn      = flag.Bool("pprof-on", false, "Should a pprof server be run along the app")
 )
 
