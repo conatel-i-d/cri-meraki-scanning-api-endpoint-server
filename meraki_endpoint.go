@@ -67,6 +67,7 @@ type LocationData struct {
 
 type job struct {
 	scanData []byte
+	tenant string
 }
 
 var (
@@ -230,6 +231,12 @@ func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret str
 		err := json.Unmarshal(j.scanData, &scanData)
 		if err != nil {
 			logger.Printf("Could not parse the body: %v\n", err)
+			return
+		}
+		tenant := j.tenant
+		if tenant == "" {
+			logger.Printf("There is no valid tenant")
+			return
 		}
 		if secret != scanData.Secret {
 			fmt.Println("Invalid secret", scanData.Secret)
@@ -239,7 +246,7 @@ func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret str
 		data := scanData.Data
 		now := time.Now().In(loc).Format(time.RFC3339)
 		key := now + "-" + data.ApMac + ".json"
-		data.Tenant = "tata"
+		data.Tenant = tenant
 		dataBytes, err := json.Marshal(data)
 		if err != nil {
 			panic(err)
@@ -252,6 +259,7 @@ func createProcessBody(svc *s3.S3, loc *time.Location, bucket string, secret str
 		_, err = svc.PutObject(input)
 		if err != nil {
 			logger.Printf("Could not parse the body: %v\n", err)
+			return
 		}
 		fmt.Println("Saved", key, "to S3 in", time.Since(start))
 	}
@@ -303,7 +311,7 @@ func postData(w http.ResponseWriter, r *http.Request, tenant string, jobs chan j
 		return
 	}
 	go func() {
-		jobs <- job{scanData}
+		jobs <- job{scanData, tenant}
 	}()
 	w.WriteHeader(http.StatusAccepted)
 }
