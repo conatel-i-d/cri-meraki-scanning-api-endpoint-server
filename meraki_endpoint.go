@@ -19,6 +19,7 @@ import (
   "github.com/aws/aws-sdk-go/aws"
   "github.com/aws/aws-sdk-go/aws/session"
   "github.com/aws/aws-sdk-go/service/s3"
+  "github.com/julienschmidt/httprouter"
 )
 
 // Configure `jsoniter` to work as the `encoding/json` module API
@@ -153,9 +154,13 @@ func main() {
 	/*
 	  Create and configure the API router
 	*/
-	router := http.NewServeMux()
-	router.Handle("/", handler())
-	router.Handle("/healthz", healthz())
+    router := httprouter.New()
+
+	
+	router.POST("/:tenant/:organization", handler)
+    
+	router.GET("/healthz", healthz)
+
 	/*
 	  Configure the HTTP server
 	*/
@@ -258,14 +263,12 @@ stability of the service.
 
 It returns a 204 Code, not a 200 Code.
 */
-func healthz() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if atomic.LoadInt32(&healthy) == 1 {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
-	})
+func healthz(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	if atomic.LoadInt32(&healthy) == 1 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
 /*
@@ -273,18 +276,10 @@ Handles request to the `/` endpoint. Meraki expects a GET request to `/`
 to return the validator for the organization, and a POST to `/` to handle
 the JSON information.
 */
-func handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/" {
-			getValidator(w, r)
-			return
-		}
-		if r.Method == http.MethodPost && r.URL.Path == "/" {
-			postData(w, r, jobs)
-			return
-		}
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-	})
+func handler(w http.ResponseWriter, r *http.Request,  ps httprouter.Params) {	
+	tenant := ps.ByName("tenant")
+	postData(w, r, tenant, jobs)
+	return	
 }
 
 /*
@@ -300,7 +295,7 @@ func getValidator(w http.ResponseWriter, r *http.Request) {
 Reads the body to a []byte and creates a new `job` with it. Then it returns
 with a 202 success code.
 */
-func postData(w http.ResponseWriter, r *http.Request, jobs chan job) {
+func postData(w http.ResponseWriter, r *http.Request, tenant string, jobs chan job) {
 	scanData, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusAccepted)
