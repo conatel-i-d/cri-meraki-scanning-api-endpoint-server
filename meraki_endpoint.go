@@ -78,7 +78,7 @@ var (
 	maxQueueSize = flag.Int("max_queue_size", 100, "The size of the job queue")
 	maxWorkers   = flag.Int("max_workers", 5, "The number of workers to start")
 	port         = flag.String("port", "8080", "The server port")
-	bucket       = flag.String("bucket", "cri.conatel.cloud", "The S3 Bucket where the data will be stored")
+	bucket       = flag.String("bucket", "test.cri.conatel.cloud", "The S3 Bucket where the data will be stored")
 	location     = flag.String("location", "UTC", "The time location")
 	tls          = flag.Bool("tls", false, "Should the server listen and serve tls")
 	serverCrt    = flag.String("server-tls", "server.crt", "Server TLS certificate")
